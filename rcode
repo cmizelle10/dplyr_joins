@@ -1,0 +1,106 @@
+library(tidyverse)
+library(lubridate)
+questions <- readRDS(url("https://assets.datacamp.com/production/repositories/5284/datasets/89d5a716b4f41dbe4fcda1a7a1190f24f58f0e47/questions.rds", "rb"))
+tags <- readRDS(url("https://assets.datacamp.com/production/repositories/5284/datasets/207c31b235786e73496fd7e58e416779911a9d98/tags.rds", "rb"))
+question_tags <- readRDS(url("https://assets.datacamp.com/production/repositories/5284/datasets/966938d665c69bffd87393b345ea2837a94bab97/question_tags.rds", "rb"))
+answers <- readRDS(url("https://assets.datacamp.com/production/repositories/5284/datasets/6cb9c039aa8326d98de37afefa32e1c458764638/answers.rds", "rb"))
+
+
+questions_with_tags <- questions %>%
+  left_join(question_tags, by = c("id" = "question_id")) %>%
+  left_join(tags, by = c("tag_id" = "id")) %>%
+  replace_na(list(tag_name = "only-r"))
+
+
+questions_with_tags %>%
+  # Group by tag_name
+  group_by(tag_name) %>%
+  # Get mean score and num_questions
+  summarize(score = mean(score),
+            num_questions = n()) %>%
+  # Sort num_questions in descending order
+  arrange(desc(num_questions))
+
+by_type_year_tag <- posts_with_tags %>%
+  mutate(year = year(creation_date)) %>%
+  count(type, year, tag_name)
+
+# Filter for the dplyr and ggplot2 tag names 
+by_type_year_tag_filtered <- by_type_year_tag %>%
+  filter(tag_name %in% c("dplyr", "ggplot2"))
+
+# Create a line plot faceted by the tag name 
+ggplot(by_type_year_tag_filtered, aes(year, n, color = type)) +
+  geom_line() +
+  facet_wrap(~ tag_name)
+
+# Using a join, filter for tags that are never on an R question
+tags %>%
+  anti_join(question_tags, by = c("id" = "tag_id"))
+
+
+questions %>%
+  # Inner join questions and answers with proper suffixes
+  inner_join(answers, by = c("id" = "question_id"), suffix = c("_question", "_answer")) %>%
+  # Subtract creation_date_question from creation_date_answer to create gap
+  mutate(gap = as.integer(creation_date_answer - creation_date_question))
+
+
+# Count and sort the question id column in the answers table
+answer_counts <- answers %>%
+  count(question_id)
+
+
+# Combine the answer_counts and questions tables
+questions %>%
+  left_join(answer_counts, by = c("id" = "question_id")) %>%
+  # Replace the NAs in the n column
+  replace_na(list(n = 0))
+
+answer_counts <- answers %>%
+  count(question_id, sort = TRUE)
+
+question_answer_counts <- questions %>%
+  left_join(answer_counts, by = c("id" = "question_id")) %>%
+  replace_na(list(n = 0))
+
+tagged_answers <- question_answer_counts %>%
+  inner_join(question_tags, by = c("id" = "question_id")) %>%
+  inner_join(tags, by = c("tag_id" = "id"))
+
+tagged_answers %>%
+  # Aggregate by tag_name
+  group_by(tag_name) %>%
+  # Summarize questions and average_answers
+  summarize(questions = n(),
+            average_answers = mean(n)) %>%
+  # Sort the questions in descending order
+  arrange(desc(questions))
+
+
+# Inner join the question_tags and tags tables with the questions table
+questions %>%
+  inner_join(question_tags, by = c("id" = "question_id")) %>%
+  inner_join(tags, by = c("tag_id" = "id"))
+
+# Inner join the question_tags and tags tables with the answers table
+answers %>%
+  inner_join(question_tags, by = "question_id") %>%
+  inner_join(tags, by = c("tag_id" = "id"))
+
+questions_with_tags <- questions %>%
+  inner_join(question_tags, by = c("id" = "question_id")) %>%
+  inner_join(tags, by = c("tag_id" = "id"))
+answers_with_tags <- answers %>%
+  inner_join(question_tags, by = "question_id") %>%
+  inner_join(tags, by = c("tag_id" = "id"))
+
+# Combine the two tables into posts_with_tags
+posts_with_tags <- bind_rows(questions_with_tags %>% mutate(type = "question"),
+                             answers_with_tags %>% mutate(type = "answer"))
+
+
+# Add a year column, then aggregate by type, year, and tag_name
+posts_with_tags %>%
+  mutate(year = lubridate::year(creation_date)) %>%
+  count(type, year, tag_name)
